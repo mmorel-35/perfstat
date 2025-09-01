@@ -122,10 +122,10 @@ jobs:
         echo "Checking build tag consistency..."
         
         # Files that should have aix build tags
-        AIX_FILES=$(find . -name "*.go" -not -path "./examples/*" -exec grep -l "libperfstat\|perfstat_" {} \;)
+        AIX_FILES=$(find . -name "*.go" -not -path "./examples/*" -not -name "types_*.go" -exec grep -l "#cgo\|import \"C\"" {} \;)
         for file in $AIX_FILES; do
           if ! grep -q "//go:build aix" "$file"; then
-            echo "ERROR: $file uses perfstat but lacks aix build tag"
+            echo "ERROR: $file uses CGO but lacks aix build tag"
             exit 1
           fi
         done
@@ -133,8 +133,8 @@ jobs:
         # Files that should NOT have aix build tags (like doc.go)
         NON_AIX_FILES=$(find . -name "*.go" -exec grep -l "//go:build !aix" {} \;)
         for file in $NON_AIX_FILES; do
-          if grep -q "libperfstat\|perfstat_" "$file"; then
-            echo "ERROR: $file has !aix build tag but uses perfstat"
+          if grep -q "#cgo\|import \"C\"" "$file"; then
+            echo "ERROR: $file has !aix build tag but uses CGO"
             exit 1
           fi
         done
