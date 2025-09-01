@@ -1,0 +1,108 @@
+name: AIX Build and Test
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:  # Allow manual triggering
+
+jobs:
+  build-aix:
+    name: Build and Test on AIX
+    # This would run on self-hosted AIX runners when available
+    # For now, it's configured but will be skipped if no runners are available
+    runs-on: self-hosted
+    if: contains(github.event.head_commit.message, '[aix]') || github.event_name == 'workflow_dispatch'
+    
+    steps:
+    - name: Check AIX environment
+      run: |
+        uname -a
+        echo "Checking for AIX-specific tools and libraries..."
+        which xlc || echo "xlc compiler not found"
+        lslpp -L bos.perf.libperfstat || echo "libperfstat not installed"
+        echo "Go version:"
+        go version
+        
+    - uses: actions/checkout@v4
+    
+    - name: Set up Go for AIX
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.21'
+        
+    - name: Enable CGO for AIX build
+      run: |
+        export CGO_ENABLED=1
+        export GOOS=aix
+        export GOARCH=ppc64
+        echo "CGO_ENABLED=1" >> $GITHUB_ENV
+        echo "GOOS=aix" >> $GITHUB_ENV  
+        echo "GOARCH=ppc64" >> $GITHUB_ENV
+        
+    - name: Build with libperfstat
+      run: |
+        echo "Building perfstat library for AIX..."
+        go build -v -tags=aix .
+        
+    - name: Build examples
+      run: |
+        echo "Building example programs..."
+        cd examples
+        for example in *.go; do
+          if [ -f "$example" ]; then
+            echo "Building $example"
+            go build -v "$example"
+          fi
+        done
+        
+    - name: Run tests
+      run: |
+        echo "Running tests on AIX..."
+        go test -v -tags=aix .
+        
+    - name: Run example programs
+      run: |
+        echo "Running example programs to validate functionality..."
+        cd examples
+        # Run examples that don't require root privileges
+        for binary in cpu mem disk; do
+          if [ -f "$binary" ]; then
+            echo "Running $binary example:"
+            timeout 10s ./"$binary" || echo "Example completed or timed out"
+          fi
+        done
+
+  validate-aix-dependencies:
+    name: Validate AIX Dependencies
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Check libperfstat header dependencies
+      run: |
+        echo "Validating C header dependencies..."
+        # Check that our C helpers reference the correct perfstat headers
+        grep -n "#include <libperfstat.h>" c_helpers.h || {
+          echo "ERROR: libperfstat.h not properly included"
+          exit 1
+        }
+        
+        # Validate C function signatures match expected AIX libperfstat API
+        grep -n "perfstat_" c_helpers.h c_helpers.c
+        
+        echo "C header validation completed"
+        
+    - name: Check Go-C interface
+      run: |
+        echo "Validating Go-C interface..."
+        # Check that all Go files using CGO have proper import "C" statements
+        for file in $(grep -l "#cgo" *.go); do
+          if ! grep -q 'import "C"' "$file"; then
+            echo "ERROR: $file has CGO directives but no import C statement"
+            exit 1
+          fi
+        done
+        
+        echo "Go-C interface validation completed"

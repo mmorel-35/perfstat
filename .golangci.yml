@@ -1,0 +1,44 @@
+run:
+  timeout: 5m
+  build-tags:
+    - "!aix"  # Exclude AIX-specific code for most linting
+
+issues:
+  exclude-rules:
+    # Exclude some linters from running on files with build tags
+    - path: ".*\\.go"
+      text: "should have comment.*or be unexported"
+      linters:
+        - revive
+    # Allow CGO-related issues since they're platform specific
+    - path: ".*\\.go" 
+      text: ".*cgo.*"
+      linters:
+        - staticcheck
+
+linters:
+  enable:
+    - gofmt
+    - goimports
+    - govet
+    - ineffassign
+    - misspell
+    - revive
+    - staticcheck
+    - typecheck
+    - unused
+    - errcheck
+    - gosimple
+    - deadcode
+    - varcheck
+    - structcheck
+  disable:
+    - gosec  # Will be run separately due to CGO complexity
+
+linters-settings:
+  revive:
+    rules:
+      - name: exported
+        disabled: true  # Allow unexported functions in this system library
+  staticcheck:
+    checks: ["all", "-SA1019"]  # Allow deprecated calls that may be needed for AIX compatibility
